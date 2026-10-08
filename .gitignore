@@ -21,3 +21,6 @@ test-results
 
 # Logs
 *.log
+
+# Local agent worktrees and session scratch
+.claude/
