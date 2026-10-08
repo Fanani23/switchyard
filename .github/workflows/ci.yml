@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same branch instead of racing them.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DATABASE_URL: postgres://starter:starter@localhost:5432/starter
+  REDIS_URL: redis://localhost:6379
+
+jobs:
+  # Gates run in order inside one job: any failure stops the pipeline.
+  verify:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: starter
+          POSTGRES_PASSWORD: starter
+          POSTGRES_DB: starter
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U starter"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm -r run lint
+
+      - name: Typecheck
+        run: pnpm -r run typecheck
+
+      - name: Unit tests
+        run: pnpm -r run test
+
+      - name: Build
+        run: pnpm -r run build
+
+      - name: Migrate
+        run: pnpm --filter @switchyard/api db:migrate
+
+      - name: Integration tests
+        run: pnpm --filter @switchyard/api test:integration
+
+      - name: OpenAPI spec is current
+        run: |
+          pnpm --filter @switchyard/api openapi
+          git diff --exit-code apps/api/openapi.json
+
+      - name: Install Playwright browser
+        run: pnpm --filter @switchyard/web exec playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        run: pnpm --filter @switchyard/web e2e
+
+      - name: Dependency audit
+        run: pnpm audit --audit-level high
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy-api:
+    needs: [verify, secret-scan]
+    if: github.ref == 'refs/heads/main' && vars.DEPLOY == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: flyctl deploy --remote-only --config apps/api/fly.toml --dockerfile apps/api/Dockerfile
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
