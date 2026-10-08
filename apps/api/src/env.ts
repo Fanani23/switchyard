@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { LIMITS } from '@switchyard/shared';
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -11,11 +12,28 @@ const envSchema = z.object({
   CORS_ORIGINS: z
     .string()
     .default('http://localhost:3000')
-    .transform((s) => s.split(',').map((o) => o.trim()).filter(Boolean)),
-  RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(100),
+    .transform((s) =>
+      s
+        .split(',')
+        .map((o) => o.trim())
+        .filter(Boolean),
+    ),
+  /** Admin API requests per window, per API key (SPEC.md: 100/minute). */
+  RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(LIMITS.adminRequestsPerMinute),
+  /** `GET /v1/ruleset` requests per window, per API key (SPEC.md: 1,000/minute). */
+  RULESET_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(LIMITS.rulesetRequestsPerMinute),
   RATE_LIMIT_WINDOW: z.string().default('1 minute'),
-  /** Reject request bodies larger than this, in bytes. */
-  BODY_LIMIT: z.coerce.number().int().min(1024).default(1_048_576),
+  /** Reject request bodies larger than this, in bytes (SPEC.md: 256 KB). */
+  BODY_LIMIT: z.coerce.number().int().min(1024).default(LIMITS.requestBodyBytes),
+  /**
+   * Bootstrap credential for creating projects and environments, which no
+   * environment-scoped key can do. Unset disables root access. Store it like any secret.
+   */
+  SWITCHYARD_ROOT_KEY: z
+    .string()
+    .min(32, 'SWITCHYARD_ROOT_KEY must be at least 32 characters')
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
 });
 
 export const env = envSchema.parse(process.env);

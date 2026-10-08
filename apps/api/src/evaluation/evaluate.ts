@@ -1,9 +1,4 @@
-import type {
-  Clause,
-  EvaluationContext,
-  RulesetFlag,
-  RulesetRule,
-} from '@switchyard/shared';
+import type { Clause, EvaluationContext, RulesetFlag, RulesetRule } from '@switchyard/shared';
 import { murmur3_32 } from './murmur3.js';
 
 /** Number of buckets: SPEC.md divides the hash into 0.00–99.99, i.e. 10,000 slots. */
