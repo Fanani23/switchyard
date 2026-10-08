@@ -17,7 +17,10 @@ export const variantKeySchema = z
   .string()
   .min(1)
   .max(LIMITS.flagKeyLength)
-  .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/, 'must start with a letter or digit and contain only letters, digits . _ -');
+  .regex(
+    /^[A-Za-z0-9][A-Za-z0-9._-]*$/,
+    'must start with a letter or digit and contain only letters, digits . _ -',
+  );
 
 export const flagKindSchema = z.enum(['boolean', 'multivariate']);
 export type FlagKind = z.infer<typeof flagKindSchema>;

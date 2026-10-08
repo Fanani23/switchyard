@@ -88,11 +88,19 @@ export const createFlagBodySchema = z
     const keys = body.variants.map((v) => v.key);
     keys.forEach((key, i) => {
       if (keys.indexOf(key) !== i) {
-        ctx.addIssue({ code: 'custom', path: ['variants', i, 'key'], message: 'duplicate variant key' });
+        ctx.addIssue({
+          code: 'custom',
+          path: ['variants', i, 'key'],
+          message: 'duplicate variant key',
+        });
       }
     });
     if (!keys.includes(body.default)) {
-      ctx.addIssue({ code: 'custom', path: ['default'], message: 'must be one of the variant keys' });
+      ctx.addIssue({
+        code: 'custom',
+        path: ['default'],
+        message: 'must be one of the variant keys',
+      });
     }
   });
 export type CreateFlagBody = z.infer<typeof createFlagBodySchema>;
