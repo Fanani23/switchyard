@@ -22,7 +22,11 @@ function rollout(percent: number, salt = SALT_A): RulesetFlag {
   return booleanFlag([{ kind: 'percentage', weights: { on: percent }, salt }], salt);
 }
 
-function multivariate(weights: Record<string, number>, variants: string[], salt = SALT_A): RulesetFlag {
+function multivariate(
+  weights: Record<string, number>,
+  variants: string[],
+  salt = SALT_A,
+): RulesetFlag {
   return {
     key: 'mv',
     kind: 'multivariate',
@@ -67,7 +71,10 @@ describe('A1 — the same user key and ruleset always yield the same variant', (
     const second = KEYS.map((key) => evaluate(copy, { key }).variant);
     expect(second).toEqual(first);
     // Order of evaluation must not matter either: no hidden state between calls.
-    const reversed = [...KEYS].reverse().map((key) => evaluate(flag, { key }).variant).reverse();
+    const reversed = [...KEYS]
+      .reverse()
+      .map((key) => evaluate(flag, { key }).variant)
+      .reverse();
     expect(reversed).toEqual(first);
   });
 });
@@ -75,7 +82,11 @@ describe('A1 — the same user key and ruleset always yield the same variant', (
 describe('A2 — with no matching rule, the default is returned', () => {
   it('evaluate.falls-back-to-default', () => {
     const noRules = booleanFlag([], SALT_A, 'on');
-    expect(evaluate(noRules, { key: 'u1' })).toEqual({ variant: 'on', reason: 'default', ruleIndex: null });
+    expect(evaluate(noRules, { key: 'u1' })).toEqual({
+      variant: 'on',
+      reason: 'default',
+      ruleIndex: null,
+    });
 
     const noMatch = booleanFlag([
       { kind: 'segment', clauses: [{ attribute: 'plan', op: 'in', values: ['pro'] }], serve: 'on' },
@@ -110,8 +121,16 @@ describe('A3 — rules apply in order and the first match wins', () => {
       default: 'control',
       variants: [{ key: 'control' }, { key: 'a' }, { key: 'b' }],
       rules: [
-        { kind: 'segment', clauses: [{ attribute: 'plan', op: 'in', values: ['pro'] }], serve: 'a' },
-        { kind: 'segment', clauses: [{ attribute: 'country', op: 'in', values: ['ID'] }], serve: 'b' },
+        {
+          kind: 'segment',
+          clauses: [{ attribute: 'plan', op: 'in', values: ['pro'] }],
+          serve: 'a',
+        },
+        {
+          kind: 'segment',
+          clauses: [{ attribute: 'country', op: 'in', values: ['ID'] }],
+          serve: 'b',
+        },
         { kind: 'percentage', weights: { b: 100 }, salt: SALT_A },
       ],
     };
@@ -214,7 +233,11 @@ describe('A5 — raising a rollout never moves a user out of it', () => {
   it('survives replacing the rule list, because the salt belongs to the flag, not the rule', () => {
     const at10 = usersServed(rollout(10), 'on');
     const rebuilt = booleanFlag([
-      { kind: 'segment', clauses: [{ attribute: 'beta', op: 'in', values: ['true'] }], serve: 'on' },
+      {
+        kind: 'segment',
+        clauses: [{ attribute: 'beta', op: 'in', values: ['true'] }],
+        serve: 'on',
+      },
       { kind: 'percentage', weights: { on: 20 }, salt: SALT_A },
     ]);
     const at20 = usersServed(rebuilt, 'on');
@@ -324,7 +347,11 @@ describe('A7 — a segment rule matches only when every clause is satisfied', ()
   it('compares numbers and booleans by their string form', () => {
     const numeric = booleanFlag([
       { kind: 'segment', clauses: [{ attribute: 'age', op: 'in', values: ['30'] }], serve: 'on' },
-      { kind: 'segment', clauses: [{ attribute: 'beta', op: 'in', values: ['true'] }], serve: 'on' },
+      {
+        kind: 'segment',
+        clauses: [{ attribute: 'beta', op: 'in', values: ['true'] }],
+        serve: 'on',
+      },
     ]);
     expect(evaluate(numeric, { key: 'u', age: 30 }).variant).toBe('on');
     expect(evaluate(numeric, { key: 'u', beta: true }).variant).toBe('on');
@@ -333,7 +360,11 @@ describe('A7 — a segment rule matches only when every clause is satisfied', ()
 
   it('can match on the user key itself', () => {
     const allowList = booleanFlag([
-      { kind: 'segment', clauses: [{ attribute: 'key', op: 'in', values: ['alice'] }], serve: 'on' },
+      {
+        kind: 'segment',
+        clauses: [{ attribute: 'key', op: 'in', values: ['alice'] }],
+        serve: 'on',
+      },
     ]);
     expect(evaluate(allowList, { key: 'alice' }).variant).toBe('on');
     expect(evaluate(allowList, { key: 'bob' }).variant).toBe('off');
@@ -343,16 +374,28 @@ describe('A7 — a segment rule matches only when every clause is satisfied', ()
 describe('A8 — an unknown user attribute never matches and never throws', () => {
   it('evaluate.unknown-attribute', () => {
     const flag = booleanFlag([
-      { kind: 'segment', clauses: [{ attribute: 'country', op: 'in', values: ['ID'] }], serve: 'on' },
+      {
+        kind: 'segment',
+        clauses: [{ attribute: 'country', op: 'in', values: ['ID'] }],
+        serve: 'on',
+      },
     ]);
-    expect(evaluate(flag, { key: 'u' })).toEqual({ variant: 'off', reason: 'default', ruleIndex: null });
+    expect(evaluate(flag, { key: 'u' })).toEqual({
+      variant: 'off',
+      reason: 'default',
+      ruleIndex: null,
+    });
     expect(evaluate(flag, { key: 'u', country: undefined }).variant).toBe('off');
     expect(evaluate(flag, { key: 'u', country: null }).variant).toBe('off');
   });
 
   it('not_in does not match an absent attribute: unknown is not "not ID"', () => {
     const flag = booleanFlag([
-      { kind: 'segment', clauses: [{ attribute: 'country', op: 'not_in', values: ['ID'] }], serve: 'on' },
+      {
+        kind: 'segment',
+        clauses: [{ attribute: 'country', op: 'not_in', values: ['ID'] }],
+        serve: 'on',
+      },
     ]);
     expect(evaluate(flag, { key: 'u' }).variant).toBe('off');
     expect(evaluate(flag, { key: 'u', country: 'US' }).variant).toBe('on');
@@ -371,7 +414,11 @@ describe('A8 — an unknown user attribute never matches and never throws', () =
 
   it('non-scalar attribute values (objects, arrays, functions) never match and never throw', () => {
     const flag = booleanFlag([
-      { kind: 'segment', clauses: [{ attribute: 'plan', op: 'not_in', values: ['free'] }], serve: 'on' },
+      {
+        kind: 'segment',
+        clauses: [{ attribute: 'plan', op: 'not_in', values: ['free'] }],
+        serve: 'on',
+      },
     ]);
     const weird: unknown[] = [{}, ['pro'], () => 'pro', Symbol('pro'), 10n, NaN];
     for (const plan of weird) {
@@ -423,16 +470,25 @@ describe('the public function never throws', () => {
   it('skips a rule kind it does not know, instead of failing the flag', () => {
     const future = {
       ...good,
-      rules: [{ kind: 'schedule', at: 'tomorrow' }, { kind: 'percentage', weights: { on: 100 }, salt: SALT_A }],
+      rules: [
+        { kind: 'schedule', at: 'tomorrow' },
+        { kind: 'percentage', weights: { on: 100 }, salt: SALT_A },
+      ],
     } as unknown as RulesetFlag;
-    expect(evaluate(future, { key: 'u' })).toEqual({ variant: 'on', reason: 'rule_match', ruleIndex: 1 });
+    expect(evaluate(future, { key: 'u' })).toEqual({
+      variant: 'on',
+      reason: 'rule_match',
+      ruleIndex: 1,
+    });
   });
 
   it('assigns by declared variant order, not by the order of keys in the weights object', () => {
     // Integer-like keys are enumerated first by JavaScript, whatever order they were written in.
     const flag = multivariate({ '2': 50, '1': 50 }, ['2', '1']);
     const low = KEYS.find((key) => bucket(SALT_A, key) < 50) as string;
-    expect(Object.keys(flag.rules[0]!.kind === 'percentage' ? flag.rules[0]!.weights : {})).toEqual(['1', '2']);
+    expect(Object.keys(flag.rules[0]!.kind === 'percentage' ? flag.rules[0]!.weights : {})).toEqual(
+      ['1', '2'],
+    );
     expect(evaluate(flag, { key: low }).variant).toBe('2');
   });
 });

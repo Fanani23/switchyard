@@ -26,7 +26,9 @@ export function uuidKeys(count: number, seed = 1): string[] {
   const keys: string[] = [];
   for (let i = 0; i < count; i++) {
     const variant = '89ab'[Math.floor(rand() * 4)] as string;
-    keys.push(`${hex(rand, 8)}-${hex(rand, 4)}-4${hex(rand, 3)}-${variant}${hex(rand, 3)}-${hex(rand, 12)}`);
+    keys.push(
+      `${hex(rand, 8)}-${hex(rand, 4)}-4${hex(rand, 3)}-${variant}${hex(rand, 3)}-${hex(rand, 12)}`,
+    );
   }
   return keys;
 }
