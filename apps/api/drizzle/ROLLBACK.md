@@ -4,6 +4,29 @@ Drizzle generates no `down` step, so every reversal is a new forward migration. 
 records what each applied migration would take to undo, written at the time it was added
 rather than reconstructed under pressure.
 
+## 0003_audit_no_truncate
+
+Drops one trigger and its function. Reversible with no data loss.
+
+```sql
+DROP TRIGGER IF EXISTS audit_log_no_truncate ON audit_log;
+DROP FUNCTION IF EXISTS reject_audit_truncate();
+```
+
+**Consequences of rolling this back:** `TRUNCATE audit_log` once again erases the entire
+log, including entries inside the 90-day window, despite the row-level append-only trigger.
+
+## 0002_audit_entity_index
+
+Adds one index; drops nothing. Reversible with no data loss.
+
+```sql
+DROP INDEX IF EXISTS audit_log_entity_created_idx;
+```
+
+**Consequences of rolling this back:** the flag list's "last changed by" lookup falls back
+to scanning the environment's audit rows. Correct, but slower as the log grows.
+
 ## 0001_triggers
 
 Drops three database-enforced invariants. Reversible with no data loss.

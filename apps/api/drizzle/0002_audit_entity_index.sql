@@ -1,0 +1,1 @@
+CREATE INDEX "audit_log_entity_created_idx" ON "audit_log" USING btree ("entity_id","created_at");

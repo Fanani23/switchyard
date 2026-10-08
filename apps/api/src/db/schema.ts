@@ -181,6 +181,11 @@ export const auditLog = pgTable(
   (t) => [
     index('audit_log_environment_created_idx').on(t.environmentId, t.createdAt),
     index('audit_log_created_idx').on(t.createdAt),
+    /**
+     * Latest change per flag, for the flag list's "changed by" (UX.md view 1). Without it
+     * that lookup scans every audit row of the environment for the retention window.
+     */
+    index('audit_log_entity_created_idx').on(t.entityId, t.createdAt),
     check('audit_log_has_a_side', sql`${t.before} IS NOT NULL OR ${t.after} IS NOT NULL`),
   ],
 );
