@@ -46,8 +46,14 @@
   --ring: #2550d8;
 }
 
+/*
+ * Dark theme in two places on purpose:
+ *   - the media query follows the OS, but yields to an explicit light choice
+ *   - the attribute selector wins when the user picks dark regardless of the OS
+ * ThemeToggle sets data-theme; a boot script applies it before first paint.
+ */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --canvas: #0c0e12;
     --surface: #14171d;
     --raised: #1b1f27;
@@ -67,6 +73,28 @@
     --highlight: #3a3113;
     --ring: #7ea2ff;
   }
+}
+
+/* An explicit dark choice, independent of the OS setting. */
+:root[data-theme="dark"] {
+  --canvas: #0c0e12;
+  --surface: #14171d;
+  --raised: #1b1f27;
+  --fg: #e9ebef;
+  --muted: #9aa2ae;
+  --border: #2a2f39;
+  --border-strong: #58606d;
+  --accent: #7ea2ff;
+  --accent-fg: #0c0e12;
+  --accent-soft: #182135;
+  --on: #7fe3a0;
+  --on-bg: #11301d;
+  --off: #b9c0cb;
+  --off-bg: #1f242c;
+  --danger: #ff9b95;
+  --danger-bg: #351715;
+  --highlight: #3a3113;
+  --ring: #7ea2ff;
 }
 
 @layer base {
@@ -618,6 +646,173 @@
     border-top: 1px solid var(--border);
     padding: 0.75rem 0;
   }
+
+  /* Header ---------------------------------------------------------------- */
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .brand-mark {
+    width: 0.9rem;
+    height: 0.9rem;
+    border-radius: 0.25rem;
+    background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--on) 70%, var(--accent)));
+    flex: none;
+  }
+
+  .spacer {
+    flex: 1;
+  }
+
+  .theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 5.5rem;
+  }
+
+  .theme-icon {
+    font-size: 0.95rem;
+    line-height: 1;
+  }
+
+  .theme-name {
+    font-size: var(--text-xs);
+    color: var(--muted);
+    text-transform: capitalize;
+  }
+
+  /* Page furniture -------------------------------------------------------- */
+  .page-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .page-head h1 {
+    margin-bottom: 0.1rem;
+  }
+
+  .card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .card-head h2 {
+    margin: 0;
+  }
+
+  .empty {
+    text-align: left;
+  }
+
+  .empty h2 {
+    margin-bottom: 0.25rem;
+  }
+
+  .empty .diff {
+    margin-top: 0.75rem;
+  }
+
+  .env-link {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    text-decoration: none;
+    color: inherit;
+  }
+
+  .env-name {
+    font-weight: 550;
+    color: var(--accent);
+  }
+
+  /* Sign-in --------------------------------------------------------------- */
+  .signin {
+    display: grid;
+    gap: 2rem;
+    align-items: start;
+    padding-top: 1.5rem;
+  }
+
+  @media (min-width: 880px) {
+    .signin {
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 3rem;
+      padding-top: 3rem;
+    }
+  }
+
+  .signin-pitch h1 {
+    font-size: 2rem;
+    line-height: 1.15;
+    letter-spacing: -0.03em;
+    margin-bottom: 0.6rem;
+  }
+
+  .lede {
+    font-size: var(--text-lg);
+    color: var(--muted);
+    line-height: 1.5;
+    margin: 0 0 1.5rem;
+  }
+
+  .features {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+  }
+
+  .features li {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    padding-left: 0.9rem;
+    border-left: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+
+  .features strong {
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+
+  .signin-card {
+    margin-bottom: 0;
+  }
+
+  .signin-card h2 {
+    margin-bottom: 0.25rem;
+  }
+
+  .signin-card .muted {
+    margin: 0 0 1rem;
+  }
+
+  /* Motion ---------------------------------------------------------------- */
+  .enter {
+    animation: enter 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  /* Cards arrive in sequence, so the eye follows the list instead of a flash. */
+  .stagger {
+    animation: enter 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: calc(var(--i, 0) * 60ms);
+  }
+
+  .rows > .row {
+    animation: row-in 0.24s ease-out both;
+  }
 }
 
 @keyframes highlight {
@@ -646,6 +841,26 @@
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateY(0.6rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes row-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 

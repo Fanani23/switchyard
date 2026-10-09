@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Inter } from 'next/font/google';
 import { Shell } from '@/components/shell';
+import { themeBootScript } from '@/components/theme-toggle';
 import './globals.css';
 
 /**
@@ -17,7 +18,11 @@ export const metadata = { title: 'Switchyard', description: 'Feature flags witho
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" className={inter.variable} suppressHydrationWarning>
+      <head>
+        {/* Applies the stored theme before first paint, so there is no flash. */}
+        <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
+      </head>
       <body>
         <Shell>{children}</Shell>
       </body>
