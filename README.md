@@ -17,9 +17,15 @@ flowchart LR
 ```
 
 Layers run one way only: route → service → repository → database. A route never queries;
-a repository never decides. The evaluation engine (`apps/api/src/evaluation`) sits beside
-the layers, not in them: it is pure, imports neither the database nor HTTP, and is what an
-in-process SDK runs.
+a repository never decides. The evaluation engine (`packages/engine`) sits beside the
+layers, not in them: it is pure, imports neither the database nor HTTP, and the API and
+the SDK run the same copy of it.
+
+**Propagation.** A trigger bumps an environment's `ruleset_version` on every change and
+calls `pg_notify('ruleset_changed', <environment id>)`. Every API instance LISTENs on one
+dedicated connection, re-reads the changed ruleset once per burst, and pushes it to its
+open `/v1/stream` connections. The SDK holds one stream; its first event is always the
+current ruleset, so reconnecting is also a full resync.
 
 ## Trade-offs
 
@@ -34,6 +40,8 @@ in-process SDK runs.
 | Key storage | SHA-256 only, plaintext shown once | encrypted at rest | A database leak yields no working credential; nothing needs to be decrypted |
 | Auth cache | 30 s TTL, dropped on local revoke | lookup per request | Off the hot path, still inside SPEC.md's 60 s revocation bound (D4) |
 | Size limits | 422 `{error, limit, actual}` | 400 with the rest | The request is well-formed, just bigger than allowed; the client needs the number |
+| Fan-out | PostgreSQL LISTEN/NOTIFY from the version trigger | Redis pub/sub | Delivered on commit and only on commit, by the same trigger that bumps the version, so no write path can skip it and a crash between commit and publish cannot drop a change. No extra service to run |
+| SDK transport | `fetch` + hand-rolled SSE parser | `EventSource` | EventSource cannot send `Authorization` and reconnects on its own schedule; the SDK needs both under its control (backoff, jitter, idle timeout) |
 
 ## Results
 
@@ -51,15 +59,18 @@ apps/api/src
   app.ts          Fastify wiring: helmet, CORS, rate limit, error handler
   env.ts          Environment parsed and validated at startup
   db/             Drizzle schema, client, migration runner
-  evaluation/     pure engine: murmur3, bucket, evaluate (no db, no http)
-  http/           route registration and shared response schemas
+  evaluation/     re-export of @switchyard/engine
+  stream/         change feed (LISTEN) and stream service (limits, heartbeats, fan-out)
+  http/           route registration, SSE sink and shared response schemas
   auth/           key generation and hashing, principal, auth service with TTL cache
   projects/ flags/ keys/ audit/ ruleset/ environments/
                   one slice each: *.repository.ts (read/write) and *.service.ts (decide)
   container.ts    wires repositories into services
 apps/api/test             Unit tests; no database
 apps/api/test-integration Integration tests; real PostgreSQL required
-packages/shared   Zod request/response contracts shared by web and api
+packages/shared   Zod request/response contracts shared by web, api and sdk
+packages/engine   pure evaluation engine: murmur3 bucketing, rule matching
+packages/sdk      client: in-memory ruleset, local evaluation, SSE with backoff
 packages/config   Base tsconfig
 ```
 
@@ -88,6 +99,22 @@ pnpm -r --parallel run dev                      # web :3000, api :4000
 On Windows, run the `pnpm -r` forms above. The root aggregate scripts (`pnpm test`,
 `pnpm build`) fail under some pnpm shims that cannot spawn a nested pnpm; CI runs Linux
 and is unaffected.
+
+## SDK
+
+```ts
+import { Switchyard } from '@switchyard/sdk';
+
+const client = new Switchyard({ apiKey, baseUrl, fallbacks: { 'new-checkout': 'control' } });
+await client.ready();                                  // first ruleset, or timeout; never rejects
+client.variant('new-checkout', { key: userId, plan }); // string, never throws
+client.enabled('dark-mode', { key: userId });          // boolean, never throws
+client.close();
+```
+
+Reconnects back off 1 s, 2 s, 4 s … 30 s with ±20% jitter, resetting only after a
+connection that stayed up 30 s. A stream silent for 75 s (two missed pings) is replaced.
+A 401/403 stops retrying; evaluation carries on from the cached ruleset or fallbacks.
 
 ## Database migrations
 
