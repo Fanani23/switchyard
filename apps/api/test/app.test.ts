@@ -52,6 +52,36 @@ describe('security baseline', () => {
   });
 });
 
+describe('CORS for the dashboard', () => {
+  it('allows every method the Admin API uses, from an allowed origin', async () => {
+    app = await appWithProbes();
+    for (const method of ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']) {
+      const res = await app.inject({
+        method: 'OPTIONS',
+        url: '/v1/flags/00000000-0000-4000-8000-000000000000',
+        headers: {
+          origin: 'http://localhost:3000',
+          'access-control-request-method': method,
+          'access-control-request-headers': 'authorization,content-type',
+        },
+      });
+      expect(res.statusCode, method).toBe(204);
+      expect(String(res.headers['access-control-allow-methods']), method).toContain(method);
+      expect(res.headers['access-control-allow-origin']).toBe('http://localhost:3000');
+    }
+  });
+
+  it('does not allow other origins', async () => {
+    app = await appWithProbes();
+    const res = await app.inject({
+      method: 'OPTIONS',
+      url: '/v1/projects',
+      headers: { origin: 'https://evil.example', 'access-control-request-method': 'GET' },
+    });
+    expect(res.headers['access-control-allow-origin']).toBeUndefined();
+  });
+});
+
 describe('D3 — no key is rejected with 401 before anything else happens', () => {
   it('auth.rejects-missing-and-unknown-keys (missing and malformed headers; unknown keys are covered against PostgreSQL)', async () => {
     app = await appWithProbes();
