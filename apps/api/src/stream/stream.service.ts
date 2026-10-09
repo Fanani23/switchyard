@@ -98,9 +98,28 @@ export class StreamService {
    * Admits a stream: a key (not root) with a free slot under the per-key limit. The slot is
    * reserved before any await, so concurrent opens cannot overshoot the limit.
    */
-  async open(principal: Principal, authorization: string | undefined): Promise<StreamSession> {
-    if (principal.kind !== 'key') throw new ForbiddenError();
-    const { keyId, environmentId } = principal;
+  async open(
+    principal: Principal,
+    authorization: string | undefined,
+    /**
+     * Required for the root key, which has no environment of its own (the dashboard signed in
+     * as root streams the environment on screen). A key may name only its own environment.
+     */
+    requestedEnvironmentId?: string,
+  ): Promise<StreamSession> {
+    let keyId: string;
+    let environmentId: string;
+    if (principal.kind === 'root') {
+      if (!requestedEnvironmentId) throw new ForbiddenError();
+      keyId = 'root';
+      environmentId = requestedEnvironmentId;
+    } else {
+      if (requestedEnvironmentId && requestedEnvironmentId !== principal.environmentId) {
+        throw new ForbiddenError();
+      }
+      keyId = principal.keyId;
+      environmentId = principal.environmentId;
+    }
 
     const current = this.perKey.get(keyId) ?? 0;
     if (current >= this.maxPerKey) {

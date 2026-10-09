@@ -7,11 +7,13 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit",
-    "lint": "eslint app e2e lib",
+    "lint": "eslint app e2e lib components",
     "test": "vitest run --passWithNoTests",
     "e2e": "playwright test"
   },
   "dependencies": {
+    "@switchyard/sdk": "workspace:*",
+    "@switchyard/shared": "workspace:*",
     "next": "^16.4.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"

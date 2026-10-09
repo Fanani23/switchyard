@@ -110,7 +110,13 @@ export async function buildApp(opts: AppOptions = {}): Promise<AppInstance> {
   app.decorateRequest('principal', null);
 
   await app.register(helmet);
-  await app.register(cors, { origin: env.CORS_ORIGINS, credentials: true });
+  await app.register(cors, {
+    origin: env.CORS_ORIGINS,
+    credentials: true,
+    // @fastify/cors allows only GET, HEAD and POST by default; the dashboard also PATCHes,
+    // PUTs and DELETEs. Found by the dashboard's end-to-end tests.
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  });
   await app.register(rateLimit, {
     // SPEC.md limits per key, not per IP: many SDK instances share one egress IP, and one
     // abusive key must not spend the budget of others behind the same NAT. The token is

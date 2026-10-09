@@ -90,6 +90,12 @@ importers:
 
   apps/web:
     dependencies:
+      '@switchyard/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      '@switchyard/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       next:
         specifier: ^16.4.0
         version: 16.4.0(@playwright/test@1.63.0)(@types/node@26.6.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)

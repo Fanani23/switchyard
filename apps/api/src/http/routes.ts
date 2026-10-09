@@ -303,6 +303,10 @@ export function registerRoutes(app: AppInstance, ctx: RouteContext): void {
         tags: ['client'],
         summary: 'Server-Sent Events: `ruleset` on connect and on every change, `ping` every 30 s',
         security: bearerSecurity,
+        querystring: z.object({
+          /** Root key only (or a key's own environment): which environment to stream. */
+          environmentId: z.uuid().optional(),
+        }),
         response: {
           200: z.string().describe('text/event-stream'),
           ...authenticatedErrors,
@@ -312,10 +316,20 @@ export function registerRoutes(app: AppInstance, ctx: RouteContext): void {
     async (req, reply) => {
       // Admission (key scope, per-key connection limit) and the initial read happen before
       // the reply is hijacked, so refusals are ordinary JSON errors from the error table.
-      const session = await services.stream.open(principalOf(req), req.headers.authorization);
+      const session = await services.stream.open(
+        principalOf(req),
+        req.headers.authorization,
+        req.query.environmentId,
+      );
+      // Headers already set on the reply (CORS for the dashboard, rate-limit counters) would
+      // be lost by hijacking; carry them into the raw response.
+      const carried: Record<string, string | number | string[]> = {};
+      for (const [name, value] of Object.entries(reply.getHeaders())) {
+        if (value !== undefined) carried[name] = value;
+      }
       reply.hijack();
       try {
-        reply.raw.writeHead(200, SSE_HEADERS);
+        reply.raw.writeHead(200, { ...carried, ...SSE_HEADERS });
       } catch {
         session.release();
         return;

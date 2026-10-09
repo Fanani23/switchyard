@@ -193,6 +193,28 @@ describe('/v1/stream policy', () => {
     expect(await root.json()).toEqual({ error: 'Forbidden' });
   });
 
+  it('the root key streams a named environment; a key only its own (dashboard live updates)', async () => {
+    const { url } = await serve();
+    const asRoot = await fetch(`${url}/v1/stream?environmentId=${env.id}`, {
+      headers: { authorization: `Bearer ${ROOT_KEY}`, origin: 'http://localhost:3000' },
+    });
+    expect(asRoot.status).toBe(200);
+    // CORS headers survive the hijacked response, so the browser dashboard can read it.
+    expect(asRoot.headers.get('access-control-allow-origin')).toBe('http://localhost:3000');
+    void asRoot.body?.cancel();
+
+    const other = (await createWorld(admin)).production;
+    const wrongEnv = await fetch(`${url}/v1/stream?environmentId=${other.id}`, {
+      headers: { authorization: `Bearer ${env.clientKey}` },
+    });
+    expect(wrongEnv.status).toBe(403);
+    const missing = await fetch(
+      `${url}/v1/stream?environmentId=00000000-0000-4000-8000-000000000000`,
+      { headers: { authorization: `Bearer ${ROOT_KEY}` } },
+    );
+    expect(missing.status).toBe(404);
+  });
+
   it('limit.sse-connections-per-key', async () => {
     const fresh = (await createWorld(admin)).staging;
     const { url } = await serve();
