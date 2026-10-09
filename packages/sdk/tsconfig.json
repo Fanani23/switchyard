@@ -1,0 +1,10 @@
+{
+  "extends": "@switchyard/config/tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": ".",
+    "types": ["node"],
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["src", "test"]
+}

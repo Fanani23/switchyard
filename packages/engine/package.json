@@ -1,0 +1,27 @@
+{
+  "name": "@switchyard/engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Pure flag evaluation: murmur3 bucketing and rule matching. No I/O; shared by the API and the SDK.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint src",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@switchyard/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@switchyard/config": "workspace:*"
+  }
+}

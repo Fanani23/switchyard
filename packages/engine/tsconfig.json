@@ -1,0 +1,5 @@
+{
+  "extends": "@switchyard/config/tsconfig.base.json",
+  "compilerOptions": { "outDir": "dist", "declaration": true, "rootDir": "src" },
+  "include": ["src"]
+}

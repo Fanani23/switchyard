@@ -1,7 +1,5 @@
 /**
- * The evaluation engine. Pure: no database, no HTTP, no clock, no I/O. The same module is
- * what an in-process SDK runs, so it must not depend on anything an SDK cannot carry.
+ * The evaluation engine lives in `@switchyard/engine` so the API and the SDK run the same
+ * code. Re-exported here so the API keeps one import path for it.
  */
-export { evaluate, bucket, bucketSlot, BUCKETS } from './evaluate.js';
-export type { EvaluationResult, EvaluationReason } from './evaluate.js';
-export { murmur3_32 } from './murmur3.js';
+export * from '@switchyard/engine';

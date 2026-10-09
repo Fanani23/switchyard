@@ -19,6 +19,7 @@ import { db as defaultDb, type Db } from './db/client.js';
 import { env } from './env.js';
 import { ConflictError, LimitExceededError, ValidationError } from './errors.js';
 import { registerRoutes } from './http/routes.js';
+import { postgresChangeFeed, type ChangeFeed } from './stream/change-feed.js';
 import type { AppInstance } from './types.js';
 
 export interface AppOptions {
@@ -30,6 +31,10 @@ export interface AppOptions {
   rateLimits?: { admin?: number; ruleset?: number };
   /** Run the 90-day audit cleanup on this interval; 0 or absent disables it. */
   auditPurgeIntervalMs?: number;
+  /** SSE heartbeat; SPEC.md fixes it at 30 s, tests shorten it. */
+  streamHeartbeatMs?: number;
+  /** Source of ruleset change notifications; defaults to LISTEN on DATABASE_URL. */
+  changeFeed?: ChangeFeed;
 }
 
 /** Friendly names for the limits in SPEC.md's table, keyed by the offending field path. */
@@ -96,7 +101,12 @@ export async function buildApp(opts: AppOptions = {}): Promise<AppInstance> {
   const services = createServices(opts.db ?? defaultDb, {
     rootKey: opts.rootKey ?? env.SWITCHYARD_ROOT_KEY,
     authCacheTtlMs: opts.authCacheTtlMs,
+    changeFeed: opts.changeFeed ?? postgresChangeFeed(env.DATABASE_URL),
+    streamHeartbeatMs: opts.streamHeartbeatMs,
+    onError: (err, context) => app.log.error({ err }, context),
   });
+  // Streams never finish on their own; end them before the server waits for connections.
+  app.addHook('preClose', async () => services.stream.closeAll());
   app.decorateRequest('principal', null);
 
   await app.register(helmet);

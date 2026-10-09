@@ -1,0 +1,28 @@
+{
+  "name": "@switchyard/sdk",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Switchyard client: holds the ruleset in memory, evaluates locally, stays current over SSE.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.build.json",
+    "lint": "eslint src test",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@switchyard/engine": "workspace:*",
+    "@switchyard/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@switchyard/config": "workspace:*"
+  }
+}
