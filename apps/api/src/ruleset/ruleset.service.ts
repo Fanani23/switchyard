@@ -18,17 +18,22 @@ export class RulesetService {
   /**
    * The whole evaluable ruleset for the key's environment. Any key scope may read it (D2);
    * the root key has no environment and so has no ruleset.
-   *
+   */
+  async get(principal: Principal): Promise<RulesetResponse> {
+    if (principal.kind !== 'key') throw new ForbiddenError();
+    return this.load(principal.environmentId);
+  }
+
+  /**
    * Version and flags are read in one REPEATABLE READ snapshot. Read separately, a write
    * landing between them would pair version N with the flags of N+1; an SDK holding N+1
    * would then ignore the real N+1 push as "already seen" and keep stale rules.
    */
-  async get(principal: Principal): Promise<RulesetResponse> {
-    if (principal.kind !== 'key') throw new ForbiddenError();
+  async load(environmentId: string): Promise<RulesetResponse> {
     const { db, flags, environments } = this.deps;
     return db.transaction(
       async (tx) => {
-        const env = await environments.findById(tx, principal.environmentId);
+        const env = await environments.findById(tx, environmentId);
         if (!env) throw new NotFoundError();
         const all = await flags.listAll(tx, env.id);
         return {

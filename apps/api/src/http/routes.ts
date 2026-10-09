@@ -26,6 +26,7 @@ import {
 import type { Services } from '../container.js';
 import type { AppInstance } from '../types.js';
 import { authenticatedErrors, bearerSecurity, principalOf, withConflict } from './responses.js';
+import { SSE_HEADERS, sseSink } from './sse.js';
 
 export interface RouteContext {
   services: Services;
@@ -282,5 +283,35 @@ export function registerRoutes(app: AppInstance, ctx: RouteContext): void {
       },
     },
     async (req) => services.ruleset.get(principalOf(req)),
+  );
+
+  app.get(
+    '/v1/stream',
+    {
+      onRequest: authenticate,
+      config: { rateLimit: { max: ctx.rulesetRateLimit, timeWindow: '1 minute' } },
+      schema: {
+        tags: ['client'],
+        summary: 'Server-Sent Events: `ruleset` on connect and on every change, `ping` every 30 s',
+        security: bearerSecurity,
+        response: {
+          200: z.string().describe('text/event-stream'),
+          ...authenticatedErrors,
+        },
+      },
+    },
+    async (req, reply) => {
+      // Admission (key scope, per-key connection limit) and the initial read happen before
+      // the reply is hijacked, so refusals are ordinary JSON errors from the error table.
+      const session = await services.stream.open(principalOf(req), req.headers.authorization);
+      reply.hijack();
+      try {
+        reply.raw.writeHead(200, SSE_HEADERS);
+      } catch {
+        session.release();
+        return;
+      }
+      session.attach(sseSink(reply.raw));
+    },
   );
 }
