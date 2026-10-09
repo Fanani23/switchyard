@@ -334,7 +334,8 @@
     padding: 0.5rem 0;
   }
 
-  .error-text {
+  .error-text,
+  .state.error {
     color: var(--danger);
   }
 
@@ -812,6 +813,72 @@
 
   .rows > .row {
     animation: row-in 0.24s ease-out both;
+  }
+
+  /*
+   * Classes the components use that the stylesheet rewrite had not reproduced. Without
+   * these the rule editor and the loading line rendered with no styling at all.
+   */
+  .status {
+    color: var(--muted);
+    font-size: var(--text-sm);
+    padding: 1.5rem 0;
+    text-align: center;
+  }
+
+  .editor {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .clause {
+    display: grid;
+    gap: 0.6rem;
+    background: var(--raised);
+  }
+
+  .clause legend {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0 0.35rem;
+  }
+
+  /* Editor labels wrap their own control, so the gap belongs inside the label. */
+  .clause label {
+    display: grid;
+    gap: 0.3rem;
+    margin-bottom: 0;
+  }
+
+  @media (min-width: 640px) {
+    .clause {
+      grid-template-columns: 1fr 1fr;
+    }
+    .clause label:last-of-type {
+      grid-column: 1 / -1;
+    }
+  }
+
+  .pill-off {
+    background: var(--off-bg);
+    color: var(--off);
+  }
+
+  .skeleton-bar.wide {
+    width: 60%;
+    height: 1.1rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .rule {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 0.85rem;
   }
 }
 
