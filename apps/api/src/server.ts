@@ -2,7 +2,8 @@ import { buildApp } from './app.js';
 import { closeDb } from './db/client.js';
 import { env } from './env.js';
 
-const app = await buildApp({ logLevel: env.LOG_LEVEL });
+// Audit retention (SPEC.md: 90 days) is enforced by an hourly cleanup.
+const app = await buildApp({ logLevel: env.LOG_LEVEL, auditPurgeIntervalMs: 60 * 60 * 1000 });
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, async () => {

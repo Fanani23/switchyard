@@ -1,6 +1,7 @@
-# Project Name
+# Switchyard
 
-> One-line pitch: what it does and for whom.
+> Feature flags for teams that ship continuously: turn a feature on for a chosen slice of
+> users in production without a deploy. See [SPEC.md](SPEC.md) and [UX.md](UX.md).
 
 **Live demo:** <link> · **API docs:** <link>/docs · **CI:** ![CI](badge-url)
 
@@ -16,7 +17,9 @@ flowchart LR
 ```
 
 Layers run one way only: route → service → repository → database. A route never queries;
-a repository never decides. Replace this diagram per project.
+a repository never decides. The evaluation engine (`apps/api/src/evaluation`) sits beside
+the layers, not in them: it is pure, imports neither the database nor HTTP, and is what an
+in-process SDK runs.
 
 ## Trade-offs
 
@@ -27,6 +30,10 @@ a repository never decides. Replace this diagram per project.
 | Primary key | `uuid` | `serial` | Ids are not guessable and not enumerable in URLs |
 | Timestamps | `timestamptz` | `timestamp` | Bare `timestamp` silently drops the offset and breaks across regions |
 | Error detail | field-level on 4xx, opaque on 5xx | uniform messages | Clients can fix their request; internals never leak |
+| Evaluation | in the SDK, from a cached ruleset | one API call per check | Microseconds per check, keeps working when the API is down (SPEC.md) |
+| Key storage | SHA-256 only, plaintext shown once | encrypted at rest | A database leak yields no working credential; nothing needs to be decrypted |
+| Auth cache | 30 s TTL, dropped on local revoke | lookup per request | Off the hot path, still inside SPEC.md's 60 s revocation bound (D4) |
+| Size limits | 422 `{error, limit, actual}` | 400 with the rest | The request is well-formed, just bigger than allowed; the client needs the number |
 
 ## Results
 
@@ -44,7 +51,12 @@ apps/api/src
   app.ts          Fastify wiring: helmet, CORS, rate limit, error handler
   env.ts          Environment parsed and validated at startup
   db/             Drizzle schema, client, migration runner
-  examples/       routes -> service -> repository, one example slice
+  evaluation/     pure engine: murmur3, bucket, evaluate (no db, no http)
+  http/           route registration and shared response schemas
+  auth/           key generation and hashing, principal, auth service with TTL cache
+  projects/ flags/ keys/ audit/ ruleset/ environments/
+                  one slice each: *.repository.ts (read/write) and *.service.ts (decide)
+  container.ts    wires repositories into services
 apps/api/test             Unit tests; no database
 apps/api/test-integration Integration tests; real PostgreSQL required
 packages/shared   Zod request/response contracts shared by web and api
@@ -55,7 +67,7 @@ packages/config   Base tsconfig
 
 ```bash
 pnpm install
-cp .env.example .env
+cp .env.example .env                            # set SWITCHYARD_ROOT_KEY
 docker compose up -d                            # Postgres + Redis
 pnpm --filter @switchyard/api db:migrate
 pnpm -r --parallel run dev                      # web :3000, api :4000
@@ -94,7 +106,7 @@ Migrations are forward-only SQL in `apps/api/drizzle/`, applied in journal order
 
 ## Security baseline
 
-Carried by the template, verified by tests in `apps/api/test/app.test.ts`:
+Verified by tests in `apps/api/test/app.test.ts` and `apps/api/test-integration/auth.test.ts`:
 
 - Helmet security headers, CORS restricted to `CORS_ORIGINS`, rate limiting, `BODY_LIMIT`.
 - Every request body and query parsed by a Zod schema at the boundary.
@@ -103,9 +115,12 @@ Carried by the template, verified by tests in `apps/api/test/app.test.ts`:
 - Secrets come from the environment, validated at startup in `env.ts`. `.env` is gitignored.
 - CI runs `pnpm audit --audit-level high` and a gitleaks secret scan.
 
-**Per project, replace the authorization comment in `examples.routes.ts` with the real
-rule and add a `preHandler`.** The template ships these routes public because it has no
-users; a project that keeps them public has skipped a decision rather than made one.
+**Authorization.** Every `/v1` route authenticates in an `onRequest` hook, before the body
+is parsed, with `Authorization: Bearer <key>`. Keys belong to one environment and carry a
+scope: `admin` keys use the Admin API for their own environment, `client` keys read only
+`/v1/ruleset`. Creating projects and environments needs the root key
+(`SWITCHYARD_ROOT_KEY`), because no environment-scoped key can create the environment it
+would belong to. Services, not routes, decide access.
 
 ## Deploy
 

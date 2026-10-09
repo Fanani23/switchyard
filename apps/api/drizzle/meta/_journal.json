@@ -15,6 +15,20 @@
       "when": 1791480477155,
       "tag": "0001_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791484103278,
+      "tag": "0002_audit_entity_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791484387186,
+      "tag": "0003_audit_no_truncate",
+      "breakpoints": true
     }
   ]
 }

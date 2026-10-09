@@ -91,6 +91,11 @@ jobs:
 
   secret-scan:
     runs-on: ubuntu-latest
+    # gitleaks-action lists the PR's commits on pull_request events, which needs
+    # pull-requests: read; with only the workflow's contents: read it fails with a 403.
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:

@@ -8,7 +8,7 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "eslint src",
+    "lint": "eslint src test test-integration",
     "test": "vitest run --passWithNoTests",
     "openapi": "tsx src/openapi.ts > openapi.json",
     "db:generate": "drizzle-kit generate",
