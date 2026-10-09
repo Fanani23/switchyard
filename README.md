@@ -45,7 +45,18 @@ current ruleset, so reconnecting is also a full resync.
 
 ## Results
 
-Benchmarks, load-test numbers, eval scores. Real numbers only.
+Stage 6, measured on one 4-core / 16 GB container running PostgreSQL 17, the built API
+(`node dist/server.js`, production settings) and the load generator together, so these
+are lower bounds. Run with `pnpm --filter @switchyard/api test:load` (about 7 minutes).
+
+| # | Target | Measured |
+| --- | --- | --- |
+| F1 | `GET /v1/ruleset` p99 < 50 ms at 500 rps | 500 flags (171 KiB), 60 s open-loop, a flag changing every 2 s: p50 1.7 ms, p99 23–31 ms, 0 errors |
+| F2 | 1,000,000 checks < 1 s | 467–637 ms through the SDK's `variant()` (1.6–2.1 M/s) |
+| F3 | 1,000 SSE connections, 5 min, no leak | all 1,000 open at 300 s, ≥ 10 pings each; two pushes reached all clients in 815 and 647 ms; server fds 63 → 1,063 → 33 after close; RSS flat at 107–112 MiB |
+
+F1 needs 40 client keys: the ruleset limit of 1,000 requests/minute per key caps one key
+at about 17 rps.
 
 ## Stack
 

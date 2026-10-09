@@ -8,12 +8,13 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "eslint src test test-integration",
+    "lint": "eslint src test test-integration test-load",
     "test": "vitest run --passWithNoTests",
     "openapi": "tsx src/openapi.ts > openapi.json",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
-    "test:integration": "vitest run --config vitest.integration.config.ts"
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:load": "vitest run --config vitest.load.config.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.1",
