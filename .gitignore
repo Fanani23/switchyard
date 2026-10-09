@@ -24,3 +24,6 @@ test-results
 
 # Local agent worktrees and session scratch
 .claude/
+
+# Production secrets live only on the server.
+deploy/.env

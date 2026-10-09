@@ -1,0 +1,106 @@
+# Production stack for a single shared VPS.
+#
+# Every port binds to 127.0.0.1 only: nginx on the host is the sole public entrance.
+# Every service declares a memory limit, because this host already runs other
+# applications and an unbounded container here would take them down with it.
+
+name: switchyard
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    # Dedicated instance on a free port. The host's own PostgreSQL on 5432, 5433
+    # and 5434 belongs to other applications and is never touched.
+    ports: ['127.0.0.1:5435:5432']
+    volumes: [switchyard-pgdata:/var/lib/postgresql/data]
+    command:
+      - postgres
+      - -c
+      - max_connections=50
+      - -c
+      - shared_buffers=48MB
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 192M
+
+  migrate:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    command: ['node', '--import', 'tsx', 'src/db/migrate.ts']
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+    deploy:
+      resources:
+        limits:
+          memory: 192M
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      LOG_LEVEL: info
+      DATABASE_URL: ${DATABASE_URL}
+      SWITCHYARD_ROOT_KEY: ${SWITCHYARD_ROOT_KEY}
+      CORS_ORIGINS: ${PUBLIC_ORIGIN}
+      DB_POOL_MAX: 8
+    # 4000 is taken on this host by another application, so the published port differs
+    # from the port inside the container.
+    ports: ['127.0.0.1:4100:4000']
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${PUBLIC_ORIGIN}/api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    ports: ['127.0.0.1:3100:3000']
+    depends_on:
+      api:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+volumes:
+  switchyard-pgdata:

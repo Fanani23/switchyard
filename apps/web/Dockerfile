@@ -3,6 +3,11 @@ RUN corepack enable
 WORKDIR /repo
 COPY . .
 RUN pnpm install --frozen-lockfile
+
+# Next.js inlines NEXT_PUBLIC_* at build time, so this has to arrive as a build argument.
+# Passing it only at run time leaves the production bundle pointing at localhost.
+ARG NEXT_PUBLIC_API_URL=http://localhost:4000
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN pnpm --filter @switchyard/web... build
 
 FROM node:22-slim
