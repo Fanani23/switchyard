@@ -11,6 +11,7 @@ import { ProjectsService } from './projects/projects.service.js';
 import { projectsRepository } from './projects/projects.repository.js';
 import { RulesetService } from './ruleset/ruleset.service.js';
 import type { ChangeFeed } from './stream/change-feed.js';
+import { ChangeHub } from './stream/change-hub.js';
 import { StreamService } from './stream/stream.service.js';
 
 export interface ServiceConfig {
@@ -36,18 +37,25 @@ export function createServices(db: Db, config: ServiceConfig) {
     rootKey: config.rootKey,
     cacheTtlMs: config.authCacheTtlMs,
   });
-  const ruleset = new RulesetService({ db, ...repos });
+  // One LISTEN connection per instance, shared by the ruleset cache and the streams. The
+  // cache subscribes first, so it is invalidated before the streams re-read.
+  const hub = new ChangeHub(config.changeFeed);
+  const ruleset = new RulesetService({ db, ...repos, hub });
   return {
     auth,
     projects: new ProjectsService({ db, ...repos }),
-    flags: new FlagsService({ db, ...repos }),
+    flags: new FlagsService({
+      db,
+      ...repos,
+      onRulesetChanged: (environmentId) => ruleset.invalidate(environmentId),
+    }),
     keys: new KeysService({ db, ...repos, onRevoked: (keyId) => auth.forget(keyId) }),
     audit: new AuditService({ db, ...repos }),
     ruleset,
     stream: new StreamService({
       auth,
       ruleset,
-      feed: config.changeFeed,
+      hub,
       heartbeatMs: config.streamHeartbeatMs,
       onError: config.onError,
     }),

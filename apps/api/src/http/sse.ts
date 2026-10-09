@@ -1,5 +1,5 @@
 import type { ServerResponse } from 'node:http';
-import type { StreamSink } from '../stream/stream.service.js';
+import type { StreamEvent, StreamSink } from '../stream/stream.service.js';
 
 /**
  * Headers for an event stream. The route hijacks the reply, so nothing Fastify or helmet
@@ -14,9 +14,28 @@ export const SSE_HEADERS = {
   'x-content-type-options': 'nosniff',
 } as const;
 
-/** Formats one Server-Sent Event. Data is JSON, so it never contains a bare newline. */
-export function formatEvent(event: string, data: unknown, id?: string): string {
-  return `event: ${event}\n${id === undefined ? '' : `id: ${id}\n`}data: ${JSON.stringify(data)}\n\n`;
+/**
+ * Formats one Server-Sent Event. The data is serialized JSON, which never contains a raw
+ * newline (JSON.stringify escapes them), so it always fits on one `data:` line.
+ */
+export function formatEvent(event: string, json: string, id?: string): string {
+  return `event: ${event}\n${id === undefined ? '' : `id: ${id}\n`}data: ${json}\n\n`;
+}
+
+/**
+ * Encoded frames, one per event object. Every connection receiving the same push writes the
+ * same Buffer, which Node queues by reference: encoding and memory are per push, not per
+ * connection (SPEC.md F3, 1,000 clients).
+ */
+const frames = new WeakMap<StreamEvent, Buffer>();
+
+function frameOf(event: StreamEvent): Buffer {
+  let frame = frames.get(event);
+  if (!frame) {
+    frame = Buffer.from(formatEvent(event.event, event.json, event.id), 'utf8');
+    frames.set(event, frame);
+  }
+  return frame;
 }
 
 export function sseSink(res: ServerResponse): StreamSink {
@@ -29,8 +48,8 @@ export function sseSink(res: ServerResponse): StreamSink {
   });
 
   return {
-    send(event, data, id) {
-      if (!closed) res.write(formatEvent(event, data, id));
+    send(event) {
+      if (!closed) res.write(frameOf(event));
     },
     buffered: () => res.writableLength,
     end() {

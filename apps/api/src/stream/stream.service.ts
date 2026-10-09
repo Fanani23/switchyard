@@ -1,16 +1,30 @@
-import { LIMITS, type RulesetResponse } from '@switchyard/shared';
+import { LIMITS } from '@switchyard/shared';
 import type { AuthService } from '../auth/auth.service.js';
 import type { Principal } from '../auth/principal.js';
 import { ForbiddenError, LimitExceededError, NotFoundError, UnauthorizedError } from '../errors.js';
-import type { RulesetService } from '../ruleset/ruleset.service.js';
-import type { ChangeFeed } from './change-feed.js';
+import type { CompiledRuleset, RulesetService } from '../ruleset/ruleset.service.js';
+import type { ChangeHub } from './change-hub.js';
+
+/**
+ * One event, created once and handed to every connection it goes to, so the sink can encode
+ * it once (see http/sse.ts): a push of a 170 KiB ruleset to 1,000 clients is one encoding
+ * and 1,000 references to it, not 170 MB of copies.
+ */
+export interface StreamEvent {
+  event: 'ruleset' | 'ping';
+  /** Already serialized. */
+  json: string;
+  id?: string;
+}
+
+const PING: StreamEvent = { event: 'ping', json: '{}' };
 
 /**
  * Where a stream's events go. The route implements it over an HTTP response; the service
  * never sees HTTP, which keeps connection policy testable and in one place.
  */
 export interface StreamSink {
-  send(event: 'ruleset' | 'ping', data: unknown, id?: string): void;
+  send(event: StreamEvent): void;
   /** Bytes written but not yet flushed to the client. */
   buffered(): number;
   end(): void;
@@ -20,7 +34,7 @@ export interface StreamSink {
 export interface StreamServiceOptions {
   auth: AuthService;
   ruleset: RulesetService;
-  feed: ChangeFeed;
+  hub: ChangeHub;
   heartbeatMs?: number;
   maxConnectionsPerKey?: number;
   /** A client this far behind is dropped rather than buffered without bound. */
@@ -39,7 +53,7 @@ interface Connection {
 
 /** A reserved slot: the ruleset to send first, and how to attach the client to it. */
 export interface StreamSession {
-  initial: RulesetResponse;
+  initial: CompiledRuleset;
   attach(sink: StreamSink): void;
   /** Gives the slot back if the caller fails before attaching. */
   release(): void;
@@ -52,15 +66,25 @@ export class StreamService {
   private readonly dirty = new Set<string>();
   /** Notifications seen per environment, to detect one landing while a stream attaches. */
   private readonly notified = new Map<string, number>();
-  private feedStarted: Promise<void> | null = null;
   private readonly heartbeatMs: number;
   private readonly maxPerKey: number;
   private readonly maxBuffered: number;
+  /** One event object per compiled ruleset, shared by every connection that receives it. */
+  private readonly rulesetEvents = new WeakMap<CompiledRuleset, StreamEvent>();
 
   constructor(private readonly opts: StreamServiceOptions) {
     this.heartbeatMs = opts.heartbeatMs ?? LIMITS.sseHeartbeatSeconds * 1000;
     this.maxPerKey = opts.maxConnectionsPerKey ?? LIMITS.sseConnectionsPerKey;
     this.maxBuffered = opts.maxBufferedBytes ?? 1024 * 1024;
+    opts.hub.subscribe({
+      onChange: (environmentId) => {
+        this.notified.set(environmentId, (this.notified.get(environmentId) ?? 0) + 1);
+        this.changed(environmentId);
+      },
+      onListen: () => {
+        for (const environmentId of this.byEnvironment.keys()) this.changed(environmentId);
+      },
+    });
   }
 
   /** Open connections, for tests and for the load stage's leak checks (F3). */
@@ -98,7 +122,7 @@ export class StreamService {
     };
 
     try {
-      await this.ensureFeed();
+      await this.opts.hub.start();
       const seenAtOpen = this.notified.get(environmentId) ?? 0;
       // Read after the feed is listening: a change committed in between is then either in
       // this snapshot or announced by a notification, never lost between the two.
@@ -124,15 +148,14 @@ export class StreamService {
     for (const set of this.byEnvironment.values()) {
       for (const conn of set) conn.sink.end();
     }
-    await this.opts.feed.close();
-    this.feedStarted = null;
+    await this.opts.hub.close();
   }
 
   private attach(
     keyId: string,
     environmentId: string,
     authorization: string | undefined,
-    initial: RulesetResponse,
+    initial: CompiledRuleset,
     sink: StreamSink,
     release: () => void,
   ): void {
@@ -158,7 +181,7 @@ export class StreamService {
       release();
     });
 
-    sink.send('ruleset', initial, String(initial.version));
+    sink.send(this.rulesetEvent(initial));
   }
 
   /**
@@ -177,35 +200,24 @@ export class StreamService {
       // The database being briefly unreachable is not a reason to drop healthy clients.
       this.opts.onError?.(err, 'stream re-authentication');
     }
-    this.deliver(conn, 'ping', {});
+    this.deliver(conn, PING);
   }
 
-  private deliver(conn: Connection, event: 'ruleset' | 'ping', data: unknown, id?: string): void {
+  private rulesetEvent(compiled: CompiledRuleset): StreamEvent {
+    let event = this.rulesetEvents.get(compiled);
+    if (!event) {
+      event = { event: 'ruleset', json: compiled.json, id: String(compiled.version) };
+      this.rulesetEvents.set(compiled, event);
+    }
+    return event;
+  }
+
+  private deliver(conn: Connection, event: StreamEvent): void {
     if (conn.sink.buffered() > this.maxBuffered) {
       conn.sink.end();
       return;
     }
-    conn.sink.send(event, data, id);
-  }
-
-  private ensureFeed(): Promise<void> {
-    if (!this.feedStarted) {
-      this.feedStarted = this.opts.feed
-        .start({
-          onChange: (environmentId) => {
-            this.notified.set(environmentId, (this.notified.get(environmentId) ?? 0) + 1);
-            this.changed(environmentId);
-          },
-          onListen: () => {
-            for (const environmentId of this.byEnvironment.keys()) this.changed(environmentId);
-          },
-        })
-        .catch((err: unknown) => {
-          this.feedStarted = null;
-          throw err;
-        });
-    }
-    return this.feedStarted;
+    conn.sink.send(event);
   }
 
   /**
@@ -227,9 +239,9 @@ export class StreamService {
   }
 
   private async push(environmentId: string): Promise<void> {
-    let ruleset: RulesetResponse;
+    let ruleset: CompiledRuleset;
     try {
-      ruleset = await this.opts.ruleset.load(environmentId);
+      ruleset = await this.opts.ruleset.load(environmentId, { fresh: true });
     } catch (err) {
       if (err instanceof NotFoundError) {
         // The environment was deleted: its streams have nothing left to serve.
@@ -242,7 +254,7 @@ export class StreamService {
     for (const conn of this.byEnvironment.get(environmentId) ?? []) {
       if (ruleset.version <= conn.version) continue;
       conn.version = ruleset.version;
-      this.deliver(conn, 'ruleset', ruleset, String(ruleset.version));
+      this.deliver(conn, this.rulesetEvent(ruleset));
     }
   }
 }
