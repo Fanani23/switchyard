@@ -29,6 +29,13 @@
       "when": 1791484387186,
       "tag": "0003_audit_no_truncate",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791548607107,
+      "tag": "0004_ruleset_notify",
+      "breakpoints": true
     }
   ]
 }

@@ -4,6 +4,36 @@ Drizzle generates no `down` step, so every reversal is a new forward migration. 
 records what each applied migration would take to undo, written at the time it was added
 rather than reconstructed under pressure.
 
+## 0004_ruleset_notify
+
+Replaces `bump_ruleset_version()` with a version that also calls `pg_notify`. Reversible
+with no data loss by restoring the 0001 body:
+
+```sql
+CREATE OR REPLACE FUNCTION bump_ruleset_version() RETURNS trigger AS $$
+DECLARE
+  target_env uuid;
+  target_flag uuid;
+BEGIN
+  IF TG_TABLE_NAME = 'flags' THEN
+    target_env := COALESCE(NEW.environment_id, OLD.environment_id);
+  ELSE
+    target_flag := COALESCE(NEW.flag_id, OLD.flag_id);
+    SELECT environment_id INTO target_env FROM flags WHERE id = target_flag;
+  END IF;
+  IF target_env IS NOT NULL THEN
+    UPDATE environments SET ruleset_version = ruleset_version + 1 WHERE id = target_env;
+  END IF;
+  RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+```
+
+**Consequences of rolling this back:** connected SDKs stop receiving pushed changes. They
+still converge when they reconnect, because every stream starts with the current ruleset,
+but a long-lived connection will serve stale rules until it drops. Deploy an API that
+publishes changes another way first.
+
 ## 0003_audit_no_truncate
 
 Drops one trigger and its function. Reversible with no data loss.

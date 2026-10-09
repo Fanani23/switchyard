@@ -3,7 +3,7 @@ RUN corepack enable
 WORKDIR /repo
 COPY . .
 RUN pnpm install --frozen-lockfile
-RUN pnpm --filter @starter/api... build
+RUN pnpm --filter @switchyard/api... build
 
 FROM node:22-slim
 WORKDIR /repo
