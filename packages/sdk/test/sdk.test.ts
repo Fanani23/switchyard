@@ -313,6 +313,26 @@ describe('B4 — a dropped connection retries with backoff and does not spin', (
 });
 
 describe('SseParser', () => {
+  it('handles any three-way split, including a lone CR at the start of the buffer', () => {
+    const wire = 'event: a\r\ndata: 1\r\n\r\nevent: b\rdata: 2\r\rdata: 3\n\n';
+    const expected = [
+      { event: 'a', data: '1' },
+      { event: 'b', data: '2' },
+      { event: 'message', data: '3' },
+    ];
+    for (let a = 0; a <= wire.length; a++) {
+      for (let b = a; b <= wire.length; b++) {
+        const parser = new SseParser();
+        const events = [
+          ...parser.push(wire.slice(0, a)),
+          ...parser.push(wire.slice(a, b)),
+          ...parser.push(wire.slice(b)),
+        ];
+        expect(events, `split at ${a}/${b}`).toEqual(expected);
+      }
+    }
+  });
+
   it('handles events split at any byte, CRLF, comments and multi-line data', () => {
     const wire =
       ': hello\r\nevent: ruleset\r\nid: 3\r\ndata: {"a":\r\ndata: 1}\r\n\r\nevent: ping\ndata: {}\n\n';
