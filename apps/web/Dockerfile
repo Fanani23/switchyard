@@ -3,7 +3,7 @@ RUN corepack enable
 WORKDIR /repo
 COPY . .
 RUN pnpm install --frozen-lockfile
-RUN pnpm --filter @starter/web... build
+RUN pnpm --filter @switchyard/web... build
 
 FROM node:22-slim
 ENV NODE_ENV=production PORT=3000

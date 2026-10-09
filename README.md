@@ -65,7 +65,7 @@ pnpm workspaces · Next.js · Fastify · PostgreSQL (Drizzle) · Redis · Vitest
 ## Layout
 
 ```
-apps/web          Next.js frontend; app/examples-list.tsx is the five-state reference
+apps/web          Next.js dashboard: app/ routes, components/, lib/ (API client, live stream)
 apps/api/src
   app.ts          Fastify wiring: helmet, CORS, rate limit, error handler
   env.ts          Environment parsed and validated at startup
@@ -110,6 +110,22 @@ pnpm -r --parallel run dev                      # web :3000, api :4000
 On Windows, run the `pnpm -r` forms above. The root aggregate scripts (`pnpm test`,
 `pnpm build`) fail under some pnpm shims that cannot spawn a nested pnpm; CI runs Linux
 and is unaffected.
+
+## Dashboard
+
+`apps/web` is the dashboard from UX.md: flag list, flag detail with the rule editor, audit
+log and API keys. Sign in with an admin key (one environment) or the root key; the key is
+held in `sessionStorage` for the tab. It talks to the Admin API directly from the browser
+(`NEXT_PUBLIC_API_URL`, CORS via `CORS_ORIGINS`) and follows the same SSE stream as the
+SDKs for live updates.
+
+- Toggles: optimistic with an 8 s undo outside production; in production, typed
+  confirmation when the rollout is partial or a 0% flag is being turned on.
+- Rule editor: edits are local until Save; a concurrent change shows a conflict banner
+  (Reload theirs / Overwrite with mine), built on `expectedUpdatedAt`.
+- End-to-end tests (`pnpm --filter @switchyard/web e2e`) start the built API and the
+  standalone web server against PostgreSQL. On a machine whose preinstalled Chromium does
+  not match Playwright's, set `PW_CHROMIUM_PATH` to it.
 
 ## SDK
 
