@@ -31,6 +31,12 @@ export interface FlagsServiceDeps {
   flags: FlagsRepository;
   environments: EnvironmentsRepository;
   audit: AuditRepository;
+  /**
+   * Called after a change to an environment's ruleset has committed. Other instances learn
+   * of it through NOTIFY a few milliseconds later; this makes the instance that took the
+   * write consistent with it immediately (read-your-writes).
+   */
+  onRulesetChanged?: (environmentId: string) => void;
 }
 
 /** 16 hex characters: well above the schema's 8-character floor, unique per flag (A6). */
@@ -72,7 +78,7 @@ export class FlagsService {
       body.kind === 'boolean' ? [...BOOLEAN_VARIANTS] : body.variants.map((v) => v.key);
 
     try {
-      return await db.transaction(async (tx) => {
+      const dto = await db.transaction(async (tx) => {
         // The row lock serializes creates per environment, so the count below cannot be
         // raced past the limit by concurrent requests.
         const env = await environments.findByIdForUpdate(tx, environmentId);
@@ -104,6 +110,8 @@ export class FlagsService {
         await this.record(tx, env, principal, 'flag.created', created.flag.id, null, created);
         return toFlagDto(created, actorOf(principal));
       });
+      this.committed(dto.environmentId);
+      return dto;
     } catch (err) {
       if (uniqueViolation(err) === 'flags_environment_key_uq')
         throw new ConflictError(DUPLICATE_KEY);
@@ -180,7 +188,7 @@ export class FlagsService {
 
   async delete(principal: Principal, flagId: string): Promise<void> {
     const { db, flags, environments } = this.deps;
-    await db.transaction(async (tx) => {
+    const environmentId = await db.transaction(async (tx) => {
       const before = await flags.findByIdForUpdate(tx, flagId);
       if (!before) throw new NotFoundError();
       assertAdminOf(principal, before.flag.environmentId);
@@ -188,7 +196,9 @@ export class FlagsService {
       if (!env) throw new NotFoundError();
       await this.record(tx, env, principal, 'flag.deleted', flagId, before, null);
       await flags.delete(tx, flagId);
+      return env.id;
     });
+    this.committed(environmentId);
   }
 
   /**
@@ -203,7 +213,7 @@ export class FlagsService {
     apply: (tx: Tx, before: FlagAggregate) => Promise<string>,
   ): Promise<FlagDto> {
     const { db, flags, environments } = this.deps;
-    return db.transaction(async (tx) => {
+    const dto = await db.transaction(async (tx) => {
       const before = await flags.findByIdForUpdate(tx, flagId);
       if (!before) throw new NotFoundError();
       assertAdminOf(principal, before.flag.environmentId);
@@ -226,6 +236,12 @@ export class FlagsService {
       await this.record(tx, env, principal, action, flagId, before, after);
       return toFlagDto(after, actorOf(principal));
     });
+    this.committed(dto.environmentId);
+    return dto;
+  }
+
+  private committed(environmentId: string): void {
+    this.deps.onRulesetChanged?.(environmentId);
   }
 
   private async record(

@@ -12,24 +12,37 @@ export interface SseEvent {
 
 export class SseParser {
   private buffer = '';
+  /** How much of `buffer` is already known to hold no line break. */
+  private scanned = 0;
   private event = '';
   private data: string[] = [];
   private id: string | undefined;
 
-  /** Feeds a chunk; returns the events it completed. Partial lines wait for the next chunk. */
+  /**
+   * Feeds a chunk; returns the events it completed. Partial lines wait for the next chunk.
+   * Only new input is scanned for line breaks: a 170 KiB ruleset arriving in many chunks
+   * costs one pass, not one pass per chunk over everything buffered so far.
+   */
   push(chunk: string): SseEvent[] {
     this.buffer += chunk;
     const events: SseEvent[] = [];
-    for (;;) {
-      const match = /\r\n|\r|\n/.exec(this.buffer);
-      if (!match) break;
-      // A lone CR at the very end may be the first half of CRLF split across chunks.
-      if (match[0] === '\r' && match.index === this.buffer.length - 1) break;
-      const line = this.buffer.slice(0, match.index);
-      this.buffer = this.buffer.slice(match.index + match[0].length);
-      const completed = this.line(line);
+    const breaks = /\r\n|\r|\n/g;
+    breaks.lastIndex = this.scanned;
+    let start = 0;
+    let scannedTo = this.buffer.length;
+    for (let match = breaks.exec(this.buffer); match; match = breaks.exec(this.buffer)) {
+      // A CR at the very end may be the first half of a CRLF split across chunks: leave it
+      // unscanned so the next chunk decides.
+      if (match[0] === '\r' && match.index === this.buffer.length - 1) {
+        scannedTo = match.index;
+        break;
+      }
+      const completed = this.line(this.buffer.slice(start, match.index));
       if (completed) events.push(completed);
+      start = breaks.lastIndex;
     }
+    this.buffer = this.buffer.slice(start);
+    this.scanned = scannedTo - start;
     return events;
   }
 

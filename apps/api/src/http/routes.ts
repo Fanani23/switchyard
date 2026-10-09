@@ -282,7 +282,16 @@ export function registerRoutes(app: AppInstance, ctx: RouteContext): void {
         response: { 200: rulesetResponseSchema, ...authenticatedErrors },
       },
     },
-    async (req) => services.ruleset.get(principalOf(req)),
+    async (req, reply) => {
+      const compiled = await services.ruleset.get(principalOf(req));
+      // Already serialized and cached per version (RulesetService.load): skip re-validating
+      // and re-stringifying the same bytes on every request. The bytes were built from rows
+      // the Zod contracts admitted, by the same mapper the schema above describes.
+      return reply
+        .type('application/json; charset=utf-8')
+        .serializer((payload: unknown) => payload as string)
+        .send(compiled.json as never);
+    },
   );
 
   app.get(

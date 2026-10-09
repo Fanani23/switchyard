@@ -53,11 +53,20 @@ async function withChildren(ex: Executor, rows: Flag[]): Promise<FlagAggregate[]
     ex.select().from(variants).where(inArray(variants.flagId, ids)).orderBy(asc(variants.position)),
     ex.select().from(rules).where(inArray(rules.flagId, ids)).orderBy(asc(rules.position)),
   ]);
-  return rows.map((flag) => ({
-    flag,
-    variants: variantRows.filter((v) => v.flagId === flag.id),
-    rules: ruleRows.filter((r) => r.flagId === flag.id),
-  }));
+  return assemble(rows, variantRows, ruleRows);
+}
+
+/** Attaches children to their flags in one pass each, keeping each list's order. */
+function assemble(rows: Flag[], variantRows: Variant[], ruleRows: Rule[]): FlagAggregate[] {
+  const byId = new Map<string, FlagAggregate>();
+  const out = rows.map((flag) => {
+    const aggregate: FlagAggregate = { flag, variants: [], rules: [] };
+    byId.set(flag.id, aggregate);
+    return aggregate;
+  });
+  for (const v of variantRows) byId.get(v.flagId)?.variants.push(v);
+  for (const r of ruleRows) byId.get(r.flagId)?.rules.push(r);
+  return out;
 }
 
 export const flagsRepository = {
@@ -120,13 +129,32 @@ export const flagsRepository = {
   },
 
   /** Every flag of an environment, for the ruleset. */
+  /**
+   * Every flag of an environment, for the ruleset. Children are selected by joining on the
+   * environment rather than by a list of up to 500 flag ids, which is what the per-change
+   * rebuild of a full ruleset spends its time on (Stage 6, F1).
+   */
   async listAll(ex: Executor, environmentId: string): Promise<FlagAggregate[]> {
-    const rows = await ex
-      .select()
-      .from(flags)
-      .where(eq(flags.environmentId, environmentId))
-      .orderBy(asc(flags.key));
-    return withChildren(ex, rows);
+    const [rows, variantRows, ruleRows] = await Promise.all([
+      ex.select().from(flags).where(eq(flags.environmentId, environmentId)).orderBy(asc(flags.key)),
+      ex
+        .select({ variant: variants })
+        .from(variants)
+        .innerJoin(flags, eq(flags.id, variants.flagId))
+        .where(eq(flags.environmentId, environmentId))
+        .orderBy(asc(variants.flagId), asc(variants.position)),
+      ex
+        .select({ rule: rules })
+        .from(rules)
+        .innerJoin(flags, eq(flags.id, rules.flagId))
+        .where(eq(flags.environmentId, environmentId))
+        .orderBy(asc(rules.flagId), asc(rules.position)),
+    ]);
+    return assemble(
+      rows,
+      variantRows.map((r) => r.variant),
+      ruleRows.map((r) => r.rule),
+    );
   },
 
   async update(ex: Executor, id: string, changes: FlagChanges): Promise<void> {

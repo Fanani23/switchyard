@@ -123,12 +123,38 @@ function matchPercentage(
   // Without a key there is nothing stable to hash; the rule does not match.
   if (typeof userKey !== 'string' || userKey.length === 0) return null;
 
+  const slot = bucketSlot(salt, userKey);
+  for (const range of rangesFor(flag.variants, weights)) {
+    if (slot < range.upper) return range.variant;
+  }
+  return null;
+}
+
+interface Range {
+  variant: string;
+  /** Exclusive upper bound, in slots (hundredths of a percent). */
+  upper: number;
+}
+
+/**
+ * Validated, cumulative ranges per percentage rule, computed once per rule object rather
+ * than on every check. A ruleset is never mutated once parsed (the SDK replaces it whole),
+ * so the memo is invisible except in speed: SPEC.md F2 runs a million checks a second, and
+ * re-validating weights on each was most of their cost. Keyed weakly, so replaced rulesets
+ * are collected; and checked against the variants it was built for. Malformed weights
+ * throw and are never memoized.
+ */
+const ranges = new WeakMap<object, { variants: unknown; ranges: Range[] }>();
+
+function rangesFor(variants: RulesetFlag['variants'], weights: Record<string, number>): Range[] {
+  const memo = ranges.get(weights);
+  if (memo && memo.variants === variants) return memo.ranges;
+
   const declared = new Set<string>();
-  for (const v of flag.variants) declared.add(v.key);
+  for (const v of variants) declared.add(v.key);
   for (const k of Object.keys(weights)) {
     if (!declared.has(k)) throw new MalformedRuleset(`weight for undeclared variant`);
   }
-
   let total = 0;
   for (const weight of Object.values(weights)) {
     if (typeof weight !== 'number' || !Number.isFinite(weight) || weight < 0) {
@@ -138,13 +164,14 @@ function matchPercentage(
   }
   if (total > BUCKETS) throw new MalformedRuleset('weights exceed 100');
 
-  const slot = bucketSlot(salt, userKey);
+  const built: Range[] = [];
   let upper = 0;
-  for (const variant of flag.variants) {
+  for (const variant of variants) {
     upper += Math.round((weights[variant.key] ?? 0) * 100);
-    if (slot < upper) return variant.key;
+    built.push({ variant: variant.key, upper });
   }
-  return null;
+  ranges.set(weights, { variants, ranges: built });
+  return built;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
